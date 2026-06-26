@@ -14,7 +14,14 @@ This proxy sits between VS Code and Google, intercepting the requests and inject
 - **Main Logic:** `proxy.js` (Express server).
 - **Port:** Defaults to `3000` (can be overridden via `process.env.PORT`).
 - **Target:** `https://generativelanguage.googleapis.com`
-- **Patched Model:** `models/gemini-3.1-pro-preview-customtools` (Only this model gets the injection; others pass through untouched).
+- **Patched Models:** The following model IDs receive thought_signature injection; others pass through untouched:
+  - `models/gemini-3.1-pro-preview-customtools`
+  - `models/gemini-3-flash-preview-customtools`
+  - `models/gemini-3-pro-preview-customtools`
+  - `models/gemini-3.1-flash-lite-customtools`
+  - `models/gemini-3.1-flash-customtools`
+  - `models/gemini-3.5-pro-preview-customtools`
+  - `models/gemini-3.5-flash-preview-customtools`
 - **Bypass Sentinel:** `skip_thought_signature_validator`
 
 ### The Injection Mechanism
@@ -31,10 +38,11 @@ All other requests (e.g., token counting, model listing) hit the `app.all("*")` 
 - **Statelessness:** The proxy must remain completely stateless. Do not store API keys, conversation history, or any user data.
 - **Error Handling:** Ensure robust error handling. If the upstream request fails, the proxy should gracefully return a `502 Bad Gateway` with details, rather than crashing.
 - **Logging:** Keep logging informative but concise. Log the interception and injection events, but avoid logging sensitive information like API keys or full message payloads.
-- **Testing:** When testing changes, ensure both the patched model (`models/gemini-3.1-pro-preview-customtools`) and other models are tested to verify the conditional injection logic works correctly.
+- **Testing:** When testing changes, ensure all patched models and at least one non-patched model are tested to verify the conditional injection logic works correctly.
 
 ## Important Context for AI Agents
 - **Do not modify the core injection logic** unless Google changes their API requirements or introduces a new model that requires the same patch.
+- **When adding new models** to the patched list, update both the `PATCHED_MODEL_IDS` set in `proxy.js` and the corresponding list in this instructions file.
 - **Do not add features that require state.** The proxy's strength is its simplicity and statelessness.
 - **When updating documentation (README.md),** ensure the instructions for configuring VS Code Insiders (`chatLanguageModels.json` and the `Chat: Manage Language Models` command) remain clear and accurate.
 - **The `.npmignore` and `.gitignore` files** are configured to exclude personal markdown files (`tweets.md`, `reddit-post.md`, `github-issue.md`). Do not remove these exclusions.

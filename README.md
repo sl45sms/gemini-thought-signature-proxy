@@ -53,8 +53,62 @@ Make sure your file looks like this (pointing to `localhost:3000` instead of Goo
         "url": "http://localhost:3000/v1beta/openai/",
         "toolCalling": true,
         "vision": true,
+        "maxInputTokens": 2000000,
+        "maxOutputTokens": 8192
+      },
+      {
+        "id": "models/gemini-3-flash-preview-customtools",
+        "name": "Gemini 3 Flash Preview Custom Tools",
+        "url": "http://localhost:3000/v1beta/openai/",
+        "toolCalling": true,
+        "vision": true,
         "maxInputTokens": 1000000,
-        "maxOutputTokens": 66000
+        "maxOutputTokens": 8192
+      },
+      {
+        "id": "models/gemini-3-pro-preview-customtools",
+        "name": "Gemini 3 Pro Preview Custom Tools",
+        "url": "http://localhost:3000/v1beta/openai/",
+        "toolCalling": true,
+        "vision": true,
+        "maxInputTokens": 2000000,
+        "maxOutputTokens": 8192
+      },
+      {
+        "id": "models/gemini-3.1-flash-lite-customtools",
+        "name": "Gemini 3.1 Flash Lite Custom Tools",
+        "url": "http://localhost:3000/v1beta/openai/",
+        "toolCalling": true,
+        "vision": true,
+        "maxInputTokens": 1000000,
+        "maxOutputTokens": 8192
+      },
+      {
+        "id": "models/gemini-3.1-flash-customtools",
+        "name": "Gemini 3.1 Flash Custom Tools",
+        "url": "http://localhost:3000/v1beta/openai/",
+        "toolCalling": true,
+        "vision": true,
+        "maxInputTokens": 1000000,
+        "maxOutputTokens": 8192
+      },
+      {
+        "id": "models/gemini-3.5-pro-preview-customtools",
+        "name": "Gemini 3.5 Pro Preview Custom Tools",
+        "url": "http://localhost:3000/v1beta/openai/",
+        "toolCalling": true,
+        "vision": true,
+        "maxInputTokens": 2000000,
+        "maxOutputTokens": 8192
+      },
+      {
+        "id": "models/gemini-3.5-flash-preview-customtools",
+        "name": "Gemini 3.5 Flash Preview Custom Tools",
+        "url": "http://localhost:3000/v1beta/openai/",
+        "toolCalling": true,
+        "vision": true,
+        "maxInputTokens": 1000000,
+        "maxOutputTokens": 8192
       }
     ]
   }
@@ -68,7 +122,7 @@ _(You can get your Gemini API key here: https://aistudio.google.com/api-keys)_
 
 1. Open the Command Palette (`Cmd+Shift+P`).
 2. Search for and select **`Chat: Manage Language Models`**.
-3. You should see the model you just added (`Gemini 3.1 Pro Preview Custom Tools`). Click on it.
+3. You should see the models you just added. Click on the one you want to use.
 4. If it asks for a name, just hit Enter.
 5. An input box will appear asking for the API key. **Paste your Google Gemini API key here and hit Enter.**
 
@@ -98,11 +152,19 @@ VS Code constructs the final URL by appending `v1/chat/completions` to the base 
 
 ### Note on Models (Privacy & Safety)
 
-**This proxy is strictly scoped.** The bypass logic _only_ activates for the `models/gemini-3.1-pro-preview-customtools` model. If you use any other model through this proxy, the request passes through 100% untouched. We do not modify, log, or store your messages or API keys.
+**This proxy is strictly scoped.** The bypass logic _only_ activates for the following models:
+- `models/gemini-3.1-pro-preview-customtools`
+- `models/gemini-3-flash-preview-customtools`
+- `models/gemini-3-pro-preview-customtools`
+- `models/gemini-3.1-flash-lite-customtools`
+- `models/gemini-3.1-flash-customtools`
+- `models/gemini-3.1-pro-preview-customtools`
+
+If you use any other model through this proxy, the request passes through 100% untouched. We do not modify, log, or store your messages or API keys.
 
 ### When this might stop working
 
-If Google changes enforcement post-GA, the `PATCHED_MODEL_ID` and `BYPASS_SIGNATURE` constants may need to be updated.
+If Google changes enforcement post-GA, the `PATCHED_MODEL_IDS` set and `BYPASS_SIGNATURE` constant may need to be updated.
 
 ### References
 

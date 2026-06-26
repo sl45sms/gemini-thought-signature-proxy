@@ -40,10 +40,18 @@ const GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com";
 const BYPASS_SIGNATURE = "skip_thought_signature_validator";
 
 /**
- * The only model ID that requires thought_signature injection.
+ * Model IDs that require thought_signature injection.
  * Other models routed through this proxy are forwarded without modification.
  */
-const PATCHED_MODEL_ID = "models/gemini-3.1-pro-preview-customtools";
+const PATCHED_MODEL_IDS = new Set([
+  "models/gemini-3.1-pro-preview-customtools",
+  "models/gemini-3-flash-preview-customtools",
+  "models/gemini-3-pro-preview-customtools",
+  "models/gemini-3.1-flash-lite-customtools",
+  "models/gemini-3.1-flash-customtools",
+  "models/gemini-3.5-pro-preview-customtools",
+  "models/gemini-3.5-flash-preview-customtools",
+]);
 
 // ---------------------------------------------------------------------------
 // App setup
@@ -121,9 +129,15 @@ app.post("/v1beta/openai/v1/chat/completions", async (req, res) => {
     // Destructure so we can replace messages without touching other params.
     const { messages, model, ...rest } = body;
 
-    // Only inject signatures for the specific model that requires it.
+    // VS Code appends "-customtools" to model IDs, but Google's API doesn't
+    // recognize that suffix — strip it before forwarding upstream.
+    const upstreamModel = model?.endsWith("-customtools")
+      ? model.slice(0, -"-customtools".length)
+      : model;
+
+    // Only inject signatures for models that require it.
     // All other models are forwarded with their messages untouched.
-    const requiresPatch = model === PATCHED_MODEL_ID;
+    const requiresPatch = PATCHED_MODEL_IDS.has(model);
     const patchedMessages = requiresPatch ? injectThoughtSignatures(messages) : messages;
 
     if (requiresPatch) {
@@ -143,13 +157,13 @@ app.post("/v1beta/openai/v1/chat/completions", async (req, res) => {
     }
 
     console.log(
-      `[proxy] → POST ${upstreamUrl}  |  model: ${model ?? "unknown"}  |  messages: ${patchedMessages?.length ?? 0}`,
+      `[proxy] → POST ${upstreamUrl}  |  model: ${model ?? "unknown"} → ${upstreamModel ?? "unknown"}  |  messages: ${patchedMessages?.length ?? 0}`,
     );
 
     const upstreamResponse = await fetch(upstreamUrl, {
       method: "POST",
       headers: forwardHeaders,
-      body: JSON.stringify({ messages: patchedMessages, model, ...rest }),
+      body: JSON.stringify({ messages: patchedMessages, model: upstreamModel, ...rest }),
     });
 
     // Forward the upstream HTTP status.
@@ -241,8 +255,8 @@ app.listen(PORT, () => {
   console.log(`    "url": "http://localhost:${PORT}/v1beta/openai/",`);
   console.log(`    "toolCalling": true,`);
   console.log(`    "vision": true,`);
-  console.log(`    "maxInputTokens": 1000000,`);
-  console.log(`    "maxOutputTokens": 66000`);
+  console.log(`    "maxInputTokens": 2000000,`);
+  console.log(`    "maxOutputTokens": 8192`);
   console.log(`  }`);
   console.log("");
 });
