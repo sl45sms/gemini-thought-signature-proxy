@@ -50,8 +50,47 @@ const PATCHED_MODEL_IDS = new Set([
   "models/gemini-3.1-flash-lite-customtools",
   "models/gemini-3.1-flash-customtools",
   "models/gemini-3.5-pro-preview-customtools",
-  "models/gemini-3.5-flash-preview-customtools",
+  "models/gemini-3.5-flash-customtools",
 ]);
+
+/**
+ * Maps Copilot BYOK model IDs → Google's actual OpenAI-compatible model IDs.
+ *
+ * Copilot uses namespaced IDs like "models/gemini-3.5-flash-customtools"
+ * but Google's /v1beta/openai endpoint expects plain IDs.
+ *
+ * The transformation is:
+ *   1. Strip "models/" prefix
+ *   2. Strip "-customtools" suffix
+ *   3. For 3.5 models, also strip "-preview" (Google uses "gemini-3.5-flash" not "...-preview")
+ */
+const GOOGLE_MODEL_MAP = {
+  // Gemini 3.5 — drops the "-preview" suffix
+  "models/gemini-3.5-flash-customtools": "gemini-3.5-flash",
+  "models/gemini-3.5-flash-lite-customtools": "gemini-3.5-flash-lite",
+
+  // Gemini 3.1 / 3 — keeps "-preview" suffix
+  "models/gemini-3.1-pro-preview-customtools":   "gemini-3.1-pro-preview",
+  "models/gemini-3-flash-preview-customtools":   "gemini-3-flash-preview",
+};
+
+/**
+ * Resolve a Copilot model ID to the actual Google model ID.
+ */
+function toGoogleModelId(copilotModelId) {
+  if (!copilotModelId) return copilotModelId;
+
+  // 1) Exact mapping
+  if (GOOGLE_MODEL_MAP[copilotModelId]) {
+    return GOOGLE_MODEL_MAP[copilotModelId];
+  }
+
+  // 2) Generic fallback: strip "models/" prefix and "-customtools" suffix
+  let id = copilotModelId;
+  if (id.startsWith("models/")) id = id.slice("models/".length);
+  if (id.endsWith("-customtools")) id = id.slice(0, -"-customtools".length);
+  return id;
+}
 
 // ---------------------------------------------------------------------------
 // App setup
@@ -129,11 +168,10 @@ app.post("/v1beta/openai/v1/chat/completions", async (req, res) => {
     // Destructure so we can replace messages without touching other params.
     const { messages, model, ...rest } = body;
 
-    // VS Code appends "-customtools" to model IDs, but Google's API doesn't
-    // recognize that suffix — strip it before forwarding upstream.
-    const upstreamModel = model?.endsWith("-customtools")
-      ? model.slice(0, -"-customtools".length)
-      : model;
+    // Map Copilot model ID → Google model ID.
+    // Copilot uses namespaced IDs like "models/gemini-3.5-flash-preview-customtools";
+    // Google expects plain IDs like "gemini-3.5-flash".
+    const upstreamModel = toGoogleModelId(model);
 
     // Only inject signatures for models that require it.
     // All other models are forwarded with their messages untouched.
@@ -166,6 +204,8 @@ app.post("/v1beta/openai/v1/chat/completions", async (req, res) => {
       body: JSON.stringify({ messages: patchedMessages, model: upstreamModel, ...rest }),
     });
 
+    console.log(`[proxy] ← ${upstreamResponse.status} ${upstreamResponse.statusText}`);
+
     // Forward the upstream HTTP status.
     res.status(upstreamResponse.status);
 
@@ -192,9 +232,15 @@ app.post("/v1beta/openai/v1/chat/completions", async (req, res) => {
  */
 app.all("*", async (req, res) => {
   try {
+    // Rewrite VS Code's /v1beta/openai/v1/... to Google's /v1beta/openai/...
+    let upstreamPath = req.path;
+    if (upstreamPath.startsWith("/v1beta/openai/v1/")) {
+      upstreamPath = upstreamPath.replace("/v1beta/openai/v1/", "/v1beta/openai/");
+    }
+
     // Reconstruct the full upstream URL including any query string.
     const qs = req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "";
-    const upstreamUrl = `${GOOGLE_BASE_URL}${req.path}${qs}`;
+    const upstreamUrl = `${GOOGLE_BASE_URL}${upstreamPath}${qs}`;
 
     // Allowlist of headers to forward.
     const forwardHeaders = {};
@@ -214,9 +260,15 @@ app.all("*", async (req, res) => {
       fetchOptions.body = JSON.stringify(req.body);
     }
 
-    console.log(`[proxy] → ${req.method} ${upstreamUrl}`);
+    if (upstreamPath !== req.path) {
+      console.log(`[proxy] → ${req.method} ${upstreamUrl}  (rewritten from ${req.path})`);
+    } else {
+      console.log(`[proxy] → ${req.method} ${upstreamUrl}`);
+    }
 
     const upstreamResponse = await fetch(upstreamUrl, fetchOptions);
+
+    console.log(`[proxy] ← ${upstreamResponse.status} ${upstreamResponse.statusText}`);
 
     res.status(upstreamResponse.status);
     const ct = upstreamResponse.headers.get("content-type");
