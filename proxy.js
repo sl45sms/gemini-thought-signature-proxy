@@ -32,6 +32,9 @@ import fetch from "node-fetch";
 
 const PORT = process.env.PORT || 3000;
 const GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com";
+const PASSPHRASE = process.env.PASSPHRASE || "-customtools";
+
+
 
 /**
  * Google's documented sentinel that tells the thought_signature validator
@@ -44,13 +47,10 @@ const BYPASS_SIGNATURE = "skip_thought_signature_validator";
  * Other models routed through this proxy are forwarded without modification.
  */
 const PATCHED_MODEL_IDS = new Set([
-  "models/gemini-3.1-pro-preview-customtools",
-  "models/gemini-3-flash-preview-customtools",
-  "models/gemini-3-pro-preview-customtools",
-  "models/gemini-3.1-flash-lite-customtools",
-  "models/gemini-3.1-flash-customtools",
-  "models/gemini-3.5-pro-preview-customtools",
-  "models/gemini-3.5-flash-customtools",
+  "models/gemini-3-flash-preview"+PASSPHRASE,
+  "models/gemini-3-pro-preview"+PASSPHRASE,
+  "models/gemini-3.5-flash-lite"+PASSPHRASE,
+  "models/gemini-3.5-flash"+PASSPHRASE,
 ]);
 
 /**
@@ -65,13 +65,14 @@ const PATCHED_MODEL_IDS = new Set([
  *   3. For 3.5 models, also strip "-preview" (Google uses "gemini-3.5-flash" not "...-preview")
  */
 const GOOGLE_MODEL_MAP = {
-  // Gemini 3.5 — drops the "-preview" suffix
-  "models/gemini-3.5-flash-customtools": "gemini-3.5-flash",
-  "models/gemini-3.5-flash-lite-customtools": "gemini-3.5-flash-lite",
+  // Gemini 3.5
+  ["models/gemini-3.5-flash"+PASSPHRASE]: "gemini-3.5-flash",
+
 
   // Gemini 3.1 / 3 — keeps "-preview" suffix
-  "models/gemini-3.1-pro-preview-customtools":   "gemini-3.1-pro-preview",
-  "models/gemini-3-flash-preview-customtools":   "gemini-3-flash-preview",
+  ["models/gemini-3.1-flash-lite"+PASSPHRASE]: "gemini-3.1-flash-lite",
+  ["models/gemini-3.1-pro-preview"+PASSPHRASE]: "gemini-3.1-pro-preview",
+  ["models/gemini-3-flash-preview"+PASSPHRASE]: "gemini-3-flash-preview",
 };
 
 /**
@@ -79,6 +80,10 @@ const GOOGLE_MODEL_MAP = {
  */
 function toGoogleModelId(copilotModelId) {
   if (!copilotModelId) return copilotModelId;
+  //check if the passphrase is present in the copilotModelId, if not regect the request
+  if (!copilotModelId.endsWith(PASSPHRASE)) {
+    return null; // Reject the request if the passphrase is missing
+  }
 
   // 1) Exact mapping
   if (GOOGLE_MODEL_MAP[copilotModelId]) {
@@ -172,6 +177,10 @@ app.post("/v1beta/openai/v1/chat/completions", async (req, res) => {
     // Copilot uses namespaced IDs like "models/gemini-3.5-flash-preview-customtools";
     // Google expects plain IDs like "gemini-3.5-flash".
     const upstreamModel = toGoogleModelId(model);
+    if (!upstreamModel) {
+      console.error(`[proxy] ✖ Rejecting request with invalid model ID: ${model}`);
+      return res.status(400).json({ error: "invalid_model_id", details: "Model ID is missing or does not contain the required passphrase." });
+    }
 
     // Only inject signatures for models that require it.
     // All other models are forwarded with their messages untouched.
