@@ -1,171 +1,182 @@
 # Gemini Thought Signature Proxy
 
+> Customised fork of [`gemini-thought-signature-proxy`](https://github.com/john-raymon/gemini-thought-signature-proxy) — deployed on Kubernetes behind Traefik.
+
+Bypasses Google's `thought_signature` requirement so Gemini models work with **VS Code Copilot BYOK** in Agent mode.
+
 ```
 400 INVALID_ARGUMENT: Function call is missing a thought_signature in functionCall parts.
 ```
 
-![alt text](https://raw.githubusercontent.com/john-raymon/gemini-thought-signature-proxy/main/image.png)
+---
 
-## What this is and why I built it (The Simple Version)
+## How it works
 
-I wanted to use the new **Gemini 3.1 Pro Preview** model directly inside **VS Code Insiders** using GitHub Copilot's new "Bring Your Own Key" (BYOK) feature.
+1. VS Code Copilot sends a chat request to the proxy (`gemini-proxy.skarvelis.gr`)
+2. The proxy strips the Copilot-specific model ID suffix, maps it to Google's actual model ID, injects `skip_thought_signature_validator`, and forwards to Google
+3. Google responds normally
+4. The proxy streams the response back to VS Code
 
-I set it up using the "OpenAI Compatible" (customoai) vendor option. It worked great for normal chatting. But the moment I tried to use **Agent mode** (where the AI can actually run tools, read files, and do things), it broke immediately with the `thought_signature` 400 error above.
+---
 
-**Why?** Gemini 3.1 does a "thinking" step before it uses a tool. Google attaches a special cryptographic signature to that thought. When VS Code replies back to Google, Google expects to see that signature again. But VS Code is built for OpenAI, not Google, so it just deletes that signature because it doesn't recognize it. Google sees the missing signature and throws a 400 error.
+## Supported models
 
-**The Fix:** This package is a tiny local proxy server. It sits between VS Code and Google. Right before VS Code sends a message to Google, this proxy sneaks in and injects a special "bypass code" (`skip_thought_signature_validator`) that Google officially allows. This tricks Google into accepting the request without the signature.
+| VS Code model ID | → Google model ID | Status |
+|---|---|---|
+| `models/gemini-3.1-pro-preview-YOURPASSPHRASE` | `gemini-3.1-pro-preview` | ✅ |
+| `models/gemini-3-flash-preview-YOURPASSPHRASE` | `gemini-3-flash-preview` | ✅ |
+| `models/gemini-3.1-flash-lite-YOURPASSPHRASE` | `gemini-3.1-flash-lite` | ✅ |
+| `models/gemini-3.5-flash-YOURPASSPHRASE` | `gemini-3.5-flash` | ✅ |
+
+> The `-YOURPASSPHRASE` suffix is a **passphrase** configured via the `PASSPHRASE` environment variable. The proxy rejects requests whose model ID doesn't end with the passphrase — this prevents unauthorised use of the proxy.
+
+---
 
 ## Quick Start
 
-### 1. Run the proxy locally
-
-Open your terminal and run:
+### 1. Create `.env` file
 
 ```bash
-npx gemini-thought-signature-proxy
+# .env — place in project root
+PASSPHRASE=-YOURPASSPHRASE
 ```
 
-_(When it starts, it will print out a `curl` command you can use to test that it's working. We do not store or log your API key!)_
+### 2. Build & push
 
-### 2. Configure VS Code Insiders
+```bash
+docker build -t localhost:32000/gemini-proxy:latest .
+docker push localhost:32000/gemini-proxy:latest
+```
 
-You need to edit your `chatLanguageModels.json` file.
+### 3. Deploy to Kubernetes
 
-**How to find it:**
+```bash
+# Create namespace + deploy Helm chart
+microk8s.helm3 upgrade --install gemini-proxy ./charts/gemini-proxy-k8s \
+  --namespace gemini-proxy --create-namespace
 
-- Press `Cmd+Shift+P` (or `Ctrl+Shift+P` on Windows/Linux)
-- Search for **`Chat: Open Language Models (JSON)`**
-- Or find it directly at `~/Library/Application Support/Code - Insiders/User/chatLanguageModels.json` on macOS.
+# Create secret from .env
+microk8s.kubectl create secret generic gemini-proxy-env \
+  --from-env-file=.env -n gemini-proxy
 
-Make sure your file looks like this (pointing to `localhost:3000` instead of Google):
+# Restart to pick up new secret (if updated)
+microk8s.kubectl rollout restart deploy/gemini-proxy-gemini-proxy-k8s -n gemini-proxy
+```
+
+### 4. Configure VS Code
+
+Edit `chatLanguageModels.json` (Cmd+Shift+P → `Chat: Open Language Models (JSON)`):
 
 ```json
-[
-  {
-    "name": "OpenAI Compatible",
-    "vendor": "customoai",
-    "apiKey": "",
-    "models": [
-      {
-        "id": "models/gemini-3.1-pro-preview-customtools",
-        "name": "Gemini 3.1 Pro Preview Custom Tools",
-        "url": "http://localhost:3000/v1beta/openai/",
-        "toolCalling": true,
-        "vision": true,
-        "maxInputTokens": 2000000,
-        "maxOutputTokens": 8192
-      },
-      {
-        "id": "models/gemini-3-flash-preview-customtools",
-        "name": "Gemini 3 Flash Preview Custom Tools",
-        "url": "http://localhost:3000/v1beta/openai/",
-        "toolCalling": true,
-        "vision": true,
-        "maxInputTokens": 1000000,
-        "maxOutputTokens": 8192
-      },
-      {
-        "id": "models/gemini-3-pro-preview-customtools",
-        "name": "Gemini 3 Pro Preview Custom Tools",
-        "url": "http://localhost:3000/v1beta/openai/",
-        "toolCalling": true,
-        "vision": true,
-        "maxInputTokens": 2000000,
-        "maxOutputTokens": 8192
-      },
-      {
-        "id": "models/gemini-3.1-flash-lite-customtools",
-        "name": "Gemini 3.1 Flash Lite Custom Tools",
-        "url": "http://localhost:3000/v1beta/openai/",
-        "toolCalling": true,
-        "vision": true,
-        "maxInputTokens": 1000000,
-        "maxOutputTokens": 8192
-      },
-      {
-        "id": "models/gemini-3.1-flash-customtools",
-        "name": "Gemini 3.1 Flash Custom Tools",
-        "url": "http://localhost:3000/v1beta/openai/",
-        "toolCalling": true,
-        "vision": true,
-        "maxInputTokens": 1000000,
-        "maxOutputTokens": 8192
-      },
-      {
-        "id": "models/gemini-3.5-pro-preview-customtools",
-        "name": "Gemini 3.5 Pro Preview Custom Tools",
-        "url": "http://localhost:3000/v1beta/openai/",
-        "toolCalling": true,
-        "vision": true,
-        "maxInputTokens": 2000000,
-        "maxOutputTokens": 8192
-      },
-      {
-        "id": "models/gemini-3.5-flash-preview-customtools",
-        "name": "Gemini 3.5 Flash Preview Custom Tools",
-        "url": "http://localhost:3000/v1beta/openai/",
-        "toolCalling": true,
-        "vision": true,
-        "maxInputTokens": 1000000,
-        "maxOutputTokens": 8192
-      }
-    ]
-  }
-]
+{
+  "name": "MyGemini",
+  "vendor": "customendpoint",
+  "apiKey": "${input:chat.lm.secret.YOUR_SECRET_ID}",
+  "apiType": "chat-completions",
+  "models": [
+    {
+      "id": "models/gemini-3.1-pro-preview-YOURPASSPHRASE",
+      "name": "Gemini 3.1 Pro Preview",
+      "url": "https://gemini-proxy.skarvelis.gr/v1beta/openai/",
+      "toolCalling": true,
+      "vision": true,
+      "maxInputTokens": 2000000,
+      "maxOutputTokens": 8192
+    },
+    {
+      "id": "models/gemini-3-flash-preview-YOURPASSPHRASE",
+      "name": "Gemini 3 Flash Preview",
+      "url": "https://gemini-proxy.skarvelis.gr/v1beta/openai/",
+      "toolCalling": true,
+      "vision": true,
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 8192
+    },
+    {
+      "id": "models/gemini-3.1-flash-lite-YOURPASSPHRASE",
+      "name": "Gemini 3.1 Flash Lite",
+      "url": "https://gemini-proxy.skarvelis.gr/v1beta/openai/",
+      "toolCalling": true,
+      "vision": true,
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 8192
+    },
+    {
+      "id": "models/gemini-3.5-flash-YOURPASSPHRASE",
+      "name": "Gemini 3.5 Flash",
+      "url": "https://gemini-proxy.skarvelis.gr/v1beta/openai/",
+      "toolCalling": true,
+      "vision": true,
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 8192
+    }
+  ]
+}
 ```
 
-### 3. Add your API Key in VS Code
-
-Just putting it in the JSON file isn't enough! You have to tell VS Code what your actual Google Gemini API key is.
-_(You can get your Gemini API key here: https://aistudio.google.com/api-keys)_
-
-1. Open the Command Palette (`Cmd+Shift+P`).
-2. Search for and select **`Chat: Manage Language Models`**.
-3. You should see the models you just added. Click on the one you want to use.
-4. If it asks for a name, just hit Enter.
-5. An input box will appear asking for the API key. **Paste your Google Gemini API key here and hit Enter.**
-
-That's it! You can now use Gemini 3.1 Pro in Agent mode without the 400 error.
+Then add your Google API key via `Chat: Manage Language Models` in the command palette.
 
 ---
 
 ## Technical Details
 
-### The Failure Flow
+### Path routing
 
-1. VS Code → Google (round 1, signature returned)
-2. VS Code strips signature
-3. VS Code → Google (round 2, 400 error)
+VS Code appends `v1/chat/completions` to the base URL. With base `https://gemini-proxy.skarvelis.gr/v1beta/openai/`, requests arrive at `/v1beta/openai/v1/chat/completions`. The proxy rewrites this to Google's `/v1beta/openai/chat/completions`.
 
-### How it works under the hood
+### Model ID transformation
 
-Before forwarding any request, the proxy walks the `messages` array, finds every `role: "assistant"` message with `tool_calls`, and injects a stateless bypass sentinel:
+```
+models/gemini-3.5-flash-YOURPASSPHRASE   ← VS Code sends this
+         ↓  strip models/ prefix
+         ↓  strip -YOURPASSPHRASE passphrase
+gemini-3.5-flash                   ← forwarded to Google
+```
+
+### Passphrase protection
+
+The `PASSPHRASE` env var (from `gemini-proxy-env` secret) is used as a required suffix on all model IDs. Requests with model IDs missing the passphrase are rejected with HTTP 400. This prevents random internet traffic from using the proxy.
+
+### Thought signature injection
+
+For every `assistant` message containing `tool_calls`, the proxy injects:
 
 ```json
 "extra_content": { "google": { "thought_signature": "skip_thought_signature_validator" } }
 ```
 
-### Path routing note
+This is Google's documented bypass sentinel.
 
-VS Code constructs the final URL by appending `v1/chat/completions` to the base URL in `chatLanguageModels.json`. With a base of `http://localhost:3000/v1beta/openai/`, VS Code sends requests to `/v1beta/openai/v1/chat/completions`. The Google endpoint is `/v1beta/openai/chat/completions` (no extra `/v1`). The proxy intercepts VS Code's path and rewrites the upstream target accordingly.
+### Ingress security
 
-### Note on Models (Privacy & Safety)
+The Traefik ingress only routes paths starting with `/v1beta` — scanner traffic (`/wp-admin`, `/.env`, etc.) is blocked at the edge.
 
-**This proxy is strictly scoped.** The bypass logic _only_ activates for the following models:
-- `models/gemini-3.1-pro-preview-customtools`
-- `models/gemini-3-flash-preview-customtools`
-- `models/gemini-3-pro-preview-customtools`
-- `models/gemini-3.1-flash-lite-customtools`
-- `models/gemini-3.1-flash-customtools`
-- `models/gemini-3.1-pro-preview-customtools`
+---
 
-If you use any other model through this proxy, the request passes through 100% untouched. We do not modify, log, or store your messages or API keys.
+## File overview
 
-### When this might stop working
+```
+.
+├── Dockerfile              # Node 22 Alpine, runs proxy.js
+├── proxy.js                # The proxy server (Express)
+├── cli.js                  # Entry point
+├── package.json            # Dependencies (express, node-fetch)
+├── .env                    # PASSPHRASE (not committed)
+├── charts/
+│   └── gemini-proxy-k8s/   # Helm chart
+│       ├── Chart.yaml
+│       ├── values.yaml
+│       ├── .helmignore
+│       └── templates/
+│           ├── _helpers.tpl
+│           ├── deployment.yaml
+│           ├── service.yaml
+│           └── ingress.yaml
+└── README.md
+```
 
-If Google changes enforcement post-GA, the `PATCHED_MODEL_IDS` set and `BYPASS_SIGNATURE` constant may need to be updated.
+## References
 
-### References
-
-- [Google's official thought signatures docs](https://ai.google.dev/gemini-api/docs/thought-signatures)
+- [Google Thought Signatures docs](https://ai.google.dev/gemini-api/docs/thought-signatures)
+- [Google OpenAI Compatibility](https://ai.google.dev/gemini-api/docs/openai)
+- [Original npm package](https://www.npmjs.com/package/gemini-thought-signature-proxy)
