@@ -1,0 +1,65 @@
+# Default values for gemini-proxy-k8s.
+
+replicaCount: 1
+
+image:
+  repository: localhost:32000/gemini-proxy
+  tag: latest
+  pullPolicy: Always
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: false
+  annotations: {}
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext: {}
+
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+service:
+  type: ClusterIP
+  port: 3000
+
+ingress:
+  enabled: true
+  annotations:
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.certresolver: leresolver
+    traefik.ingress.kubernetes.io/router.tls.domains.0.main: gemini-proxy.skarvelis.gr
+  hosts:
+    - host: gemini-proxy.skarvelis.gr
+      paths:
+        - path: "/v1beta"
+          pathType: Prefix
+
+resources:
+  limits:
+    memory: 256Mi
+    cpu: "0.5"
+  requests:
+    memory: 128Mi
+    cpu: "0.1"
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
