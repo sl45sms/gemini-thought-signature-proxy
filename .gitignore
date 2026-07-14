@@ -3,3 +3,4 @@ node_modules
 tweets.md
 reddit-post.md
 github-issue.md
+.env
