@@ -47,9 +47,9 @@ const BYPASS_SIGNATURE = "skip_thought_signature_validator";
  * Other models routed through this proxy are forwarded without modification.
  */
 const PATCHED_MODEL_IDS = new Set([
+  "models/gemini-3.1-pro-preview"+PASSPHRASE,
   "models/gemini-3-flash-preview"+PASSPHRASE,
-  "models/gemini-3-pro-preview"+PASSPHRASE,
-  "models/gemini-3.5-flash-lite"+PASSPHRASE,
+  "models/gemini-3.1-flash-lite"+PASSPHRASE,
   "models/gemini-3.5-flash"+PASSPHRASE,
 ]);
 
