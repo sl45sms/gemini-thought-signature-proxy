@@ -21,14 +21,15 @@ Bypasses Google's `thought_signature` requirement so Gemini models work with **V
 
 ## Supported models
 
-| VS Code model ID | → Google model ID | Status |
-|---|---|---|
-| `models/gemini-3.1-pro-preview-YOURPASSPHRASE` | `gemini-3.1-pro-preview` | ✅ |
-| `models/gemini-3-flash-preview-YOURPASSPHRASE` | `gemini-3-flash-preview` | ✅ |
-| `models/gemini-3.1-flash-lite-YOURPASSPHRASE` | `gemini-3.1-flash-lite` | ✅ |
-| `models/gemini-3.5-flash-YOURPASSPHRASE` | `gemini-3.5-flash` | ✅ |
+| VS Code model ID | → Google model ID | Patching | Status |
+|---|---|---|---|
+| `models/gemini-3.1-pro-preview-YOURPASSPHRASE` | `gemini-3.1-pro-preview` | Injects bypass | ✅ |
+| `models/gemini-3-flash-preview-YOURPASSPHRASE` | `gemini-3-flash-preview` | Injects bypass | ✅ |
+| `models/gemini-3.1-flash-lite-YOURPASSPHRASE` | `gemini-3.1-flash-lite` | Injects bypass | ✅ |
+| `models/gemini-3.5-flash-YOURPASSPHRASE` | `gemini-3.5-flash` | Injects bypass | ✅ |
+| `models/gemini-3.5-flash-nopatch-YOURPASSPHRASE` | `gemini-3.5-flash` | Skipped (`-nopatch-`) | ✅ |
 
-> The `-YOURPASSPHRASE` suffix is a **passphrase** configured via the `PASSPHRASE` environment variable. The proxy rejects requests whose model ID doesn't end with the passphrase — this prevents unauthorised use of the proxy.
+> The `-YOURPASSPHRASE` suffix is a **passphrase** configured via the `PASSPHRASE` environment variable (defaults to `-customtools`). The proxy rejects requests whose model ID does not start with `models/` or does not end with the passphrase — this prevents unauthorised use of the proxy.
 
 ---
 
@@ -127,15 +128,20 @@ VS Code appends `v1/chat/completions` to the base URL. With base `https://gemini
 ### Model ID transformation
 
 ```
-models/gemini-3.5-flash-YOURPASSPHRASE   ← VS Code sends this
+models/gemini-3.5-flash-YOURPASSPHRASE          ← VS Code sends this
          ↓  strip models/ prefix
          ↓  strip -YOURPASSPHRASE passphrase
-gemini-3.5-flash                   ← forwarded to Google
+gemini-3.5-flash                                ← forwarded to Google
+
+models/gemini-3.5-flash-nopatch-YOURPASSPHRASE  ← Optional: bypass injection
+         ↓  strip models/ prefix & -YOURPASSPHRASE
+         ↓  strip -nopatch-
+gemini-3.5-flash                                ← forwarded untouched to Google
 ```
 
 ### Passphrase protection
 
-The `PASSPHRASE` env var (from `gemini-proxy-env` secret) is used as a required suffix on all model IDs. Requests with model IDs missing the passphrase are rejected with HTTP 400. This prevents random internet traffic from using the proxy.
+The `PASSPHRASE` env var (from `gemini-proxy-env` secret, defaults to `-customtools` if unset) is used as a required suffix on all model IDs. Requests with model IDs missing the passphrase or not starting with `models/` are rejected with HTTP 400. This prevents unauthorised use of the proxy.
 
 ### Thought signature injection
 
@@ -146,6 +152,10 @@ For every `assistant` message containing `tool_calls`, the proxy injects:
 ```
 
 This is Google's documented bypass sentinel.
+
+#### Skipping signature injection (`-nopatch-`)
+
+If a model ID contains `-nopatch-` (e.g. `models/gemini-3.5-flash-nopatch-YOURPASSPHRASE`), the proxy skips thought signature injection entirely and forwards the messages untouched, while stripping `-nopatch-` before forwarding to Google.
 
 ### Ingress security
 
