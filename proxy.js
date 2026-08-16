@@ -54,46 +54,17 @@ const PATCHED_MODEL_IDS = new Set([
 ]);
 
 /**
- * Maps Copilot BYOK model IDs → Google's actual OpenAI-compatible model IDs.
- *
- * Copilot uses namespaced IDs like "models/gemini-3.5-flash-customtools"
- * but Google's /v1beta/openai endpoint expects plain IDs.
- *
- * The transformation is:
- *   1. Strip "models/" prefix
- *   2. Strip "-customtools" suffix
- *   3. For 3.5 models, also strip "-preview" (Google uses "gemini-3.5-flash" not "...-preview")
- */
-const GOOGLE_MODEL_MAP = {
-  // Gemini 3.5
-  ["models/gemini-3.5-flash"+PASSPHRASE]: "gemini-3.5-flash",
-
-
-  // Gemini 3.1 / 3 — keeps "-preview" suffix
-  ["models/gemini-3.1-flash-lite"+PASSPHRASE]: "gemini-3.1-flash-lite",
-  ["models/gemini-3.1-pro-preview"+PASSPHRASE]: "gemini-3.1-pro-preview",
-  ["models/gemini-3-flash-preview"+PASSPHRASE]: "gemini-3-flash-preview",
-};
-
-/**
  * Resolve a Copilot model ID to the actual Google model ID.
  */
 function toGoogleModelId(copilotModelId) {
-  if (!copilotModelId) return copilotModelId;
+  let id = copilotModelId;
+  if (!id) return null; // Reject the request if the model ID is missing
   //check if the passphrase is present in the copilotModelId, if not regect the request
-  if (!copilotModelId.endsWith(PASSPHRASE)) {
+  if (!id.endsWith(PASSPHRASE)) {
     return null; // Reject the request if the passphrase is missing
   }
-
-  // 1) Exact mapping
-  if (GOOGLE_MODEL_MAP[copilotModelId]) {
-    return GOOGLE_MODEL_MAP[copilotModelId];
-  }
-
-  // 2) Generic fallback: strip "models/" prefix and "-customtools" suffix
-  let id = copilotModelId;
-  if (id.startsWith("models/")) id = id.slice("models/".length);
-  if (id.endsWith("-customtools")) id = id.slice(0, -"-customtools".length);
+  if (id.startsWith("models/")) id = id.slice("models/".length); else return null; // Reject the request if it doesn't start with "models/"
+  id = id.slice(0, -PASSPHRASE.length);
   return id;
 }
 
