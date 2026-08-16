@@ -43,17 +43,6 @@ const PASSPHRASE = process.env.PASSPHRASE || "-customtools";
 const BYPASS_SIGNATURE = "skip_thought_signature_validator";
 
 /**
- * Model IDs that require thought_signature injection.
- * Other models routed through this proxy are forwarded without modification.
- */
-const PATCHED_MODEL_IDS = new Set([
-  "models/gemini-3.1-pro-preview"+PASSPHRASE,
-  "models/gemini-3-flash-preview"+PASSPHRASE,
-  "models/gemini-3.1-flash-lite"+PASSPHRASE,
-  "models/gemini-3.5-flash"+PASSPHRASE,
-]);
-
-/**
  * Resolve a Copilot model ID to the actual Google model ID.
  */
 function toGoogleModelId(copilotModelId) {
@@ -155,7 +144,15 @@ app.post("/v1beta/openai/v1/chat/completions", async (req, res) => {
 
     // Only inject signatures for models that require it.
     // All other models are forwarded with their messages untouched.
-    const requiresPatch = PATCHED_MODEL_IDS.has(model);
+    let requiresPatch = true;
+    if (model.includes("-nopatch-")) {
+      console.log(`[proxy] ⚠️ Model ${model} is marked as "nopatch"; skipping thought_signature injection.`);
+      requiresPatch = false;
+      //strip the "nopatch" from the model name before sending to Google
+      const strippedModel = model.replace("-nopatch-", "");
+      console.log(`[proxy] ⚠️ Model ${model} is being sent to Google as ${strippedModel}.`);
+      upstreamModel = toGoogleModelId(strippedModel);
+    }
     const patchedMessages = requiresPatch ? injectThoughtSignatures(messages) : messages;
 
     if (requiresPatch) {
